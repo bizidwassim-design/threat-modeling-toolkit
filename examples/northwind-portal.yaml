@@ -1,0 +1,197 @@
+# Data-flow model — Northwind Logistics customer portal + AI recommendation API
+# Fictional system. See docs/dfd-convention.md for the schema and drawing rules.
+# Regenerate the threat table with:
+#   python scripts/stride_from_dfd.py examples/northwind-portal.yaml --out examples/northwind-portal
+
+system:
+  name: Northwind Logistics customer portal
+  version: "1.2"
+  owner: Head of Digital Platforms (role)
+  description: >
+    Fictional customer-facing portal where Northwind Logistics customers track shipments, download invoices
+    and manage delivery preferences. A recommendation API, built on a third-party large language model,
+    suggests delivery slots and add-on services from the customer's order history and support tickets.
+
+trust_boundaries:
+  - id: TB1
+    name: Internet (untrusted)
+    description: Customers and their devices; anything can originate here.
+  - id: TB2
+    name: Edge (public cloud, DMZ)
+    description: Internet-facing gateway and web tier operated by Northwind.
+  - id: TB3
+    name: Application zone (private subnet)
+    description: Back-end services reachable only from the edge tier.
+  - id: TB4
+    name: Data zone (private subnet, no internet egress)
+    description: Databases and object storage.
+  - id: TB5
+    name: Third-party AI provider
+    description: External model API under a separate legal entity and contract.
+  - id: TB6
+    name: Corporate network
+    description: Northwind staff systems used to administer the portal.
+
+external_entities:
+  - id: EE1
+    name: Customer (browser or mobile app)
+    boundary: TB1
+    description: Registered business customer tracking shipments and paying invoices.
+  - id: EE2
+    name: Customer-service agent (back-office console)
+    boundary: TB6
+    description: Northwind staff who look up customer accounts and edit deliveries on request.
+  - id: EE3
+    name: Third-party LLM API
+    boundary: TB5
+    description: Hosted model endpoint that receives prompts and returns completions.
+  - id: EE4
+    name: Carrier tracking feed
+    boundary: TB1
+    description: Partner carriers push scan events for shipments in transit.
+
+processes:
+  - id: P1
+    name: API gateway and WAF
+    boundary: TB2
+    technology: Managed gateway with WAF rules, TLS termination, rate limiting.
+  - id: P2
+    name: Portal web application
+    boundary: TB2
+    technology: Server-rendered web app plus REST API (customer sessions, invoices, preferences).
+  - id: P3
+    name: Shipment service
+    boundary: TB3
+    technology: Internal microservice; owns shipment status and carrier events.
+  - id: P4
+    name: Recommendation API (LLM-based)
+    boundary: TB3
+    ai: true
+    technology: Retrieval-augmented service that builds prompts from order history and tickets and calls the external model.
+  - id: P5
+    name: Admin console
+    boundary: TB6
+    technology: Internal web application for customer-service agents; SSO with MFA.
+
+data_stores:
+  - id: DS1
+    name: Customer and order database
+    boundary: TB4
+    classification: Confidential
+    personal_data: true
+    description: Accounts, contacts, addresses, invoices, delivery preferences.
+  - id: DS2
+    name: Shipment event store
+    boundary: TB4
+    classification: Internal
+    personal_data: true
+    description: Carrier scan events keyed by consignment; includes delivery addresses.
+  - id: DS3
+    name: Recommendation knowledge index
+    boundary: TB4
+    classification: Confidential
+    personal_data: true
+    training_data: true
+    description: Vector index built nightly from order history and support tickets; used for retrieval.
+  - id: DS4
+    name: Audit log store
+    boundary: TB4
+    classification: Internal
+    description: Append-only security and business audit events.
+
+data_flows:
+  - id: DF1
+    name: Browse, log in, download invoices
+    from: EE1
+    to: P1
+    protocol: HTTPS
+    data: credentials, session cookie, invoice requests
+    credentials: true
+    personal_data: true
+  - id: DF2
+    name: Forward customer requests
+    from: P1
+    to: P2
+    protocol: HTTPS (internal)
+    data: authenticated requests with user identity header
+  - id: DF3
+    name: Read and update customer data
+    from: P2
+    to: DS1
+    protocol: TLS database connection
+    data: account, address, invoice and preference records
+    personal_data: true
+  - id: DF4
+    name: Shipment status lookup
+    from: P2
+    to: P3
+    protocol: gRPC over mTLS
+    data: consignment identifiers, status
+  - id: DF5
+    name: Read shipment events
+    from: P3
+    to: DS2
+    protocol: TLS database connection
+    data: scan events, delivery addresses
+    personal_data: true
+  - id: DF6
+    name: Carrier scan events
+    from: EE4
+    to: P1
+    protocol: HTTPS webhook with shared secret
+    data: consignment id, timestamp, location, status
+    personal_data: true
+  - id: DF7
+    name: Route carrier events
+    from: P1
+    to: P3
+    protocol: HTTPS (internal)
+    data: scan events
+  - id: DF8
+    name: Ask for recommendations
+    from: P2
+    to: P4
+    protocol: HTTPS (internal)
+    data: customer id, current page context, free-text question
+    personal_data: true
+  - id: DF9
+    name: Retrieve context
+    from: P4
+    to: DS3
+    protocol: TLS vector-database connection
+    data: embeddings query, matching order and ticket snippets
+    personal_data: true
+  - id: DF10
+    name: Prompt and completion
+    from: P4
+    to: EE3
+    protocol: HTTPS to provider API
+    data: prompt with retrieved snippets, model completion
+    personal_data: true
+  - id: DF11
+    name: Agent account lookups and edits
+    from: EE2
+    to: P5
+    protocol: HTTPS (SSO, MFA)
+    data: staff credentials, customer search, delivery edits
+    credentials: true
+    personal_data: true
+  - id: DF12
+    name: Admin changes to customer records
+    from: P5
+    to: DS1
+    protocol: TLS database connection
+    data: account and delivery edits
+    personal_data: true
+  - id: DF13
+    name: Write audit events
+    from: P2
+    to: DS4
+    protocol: TLS (append-only API)
+    data: authentication, authorisation and data-change events
+  - id: DF14
+    name: Write admin audit events
+    from: P5
+    to: DS4
+    protocol: TLS (append-only API)
+    data: staff actions on customer records

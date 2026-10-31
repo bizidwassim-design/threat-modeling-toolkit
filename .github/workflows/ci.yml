@@ -1,0 +1,32 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  build-and-verify:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install pyyaml pytest
+      - name: Script must parse
+        run: python -m py_compile scripts/stride_from_dfd.py
+      - name: Unit tests
+        run: python -m pytest -q tests/
+      - name: Regenerate the Northwind example
+        run: python scripts/stride_from_dfd.py examples/northwind-portal.yaml --out examples/northwind-portal
+      - name: Generated output must match the committed files
+        run: git diff --exit-code -- examples/northwind-portal/
+      - name: Every YAML model in examples/ must validate
+        run: |
+          for f in examples/*.yaml; do
+            python scripts/stride_from_dfd.py "$f" --validate-only
+          done
