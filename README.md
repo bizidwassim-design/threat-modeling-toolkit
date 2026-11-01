@@ -98,6 +98,13 @@ Run the tests and regenerate the example before opening a pull request.
 A generated threat table is a starting point, not a security assessment. The mitigations and standards mappings are
 indicative and must be adapted to your architecture and your implementation of the controls. Nothing here is legal advice.
 
+## AI assistance
+
+Built with Claude Code as a coding and writing assistant, which is why it appears as a co-author on some commits.
+**Editor and reviewer: Wassim Bizid**, who set the scope, the frameworks and the GRC approach, edited the content
+and decided what was published. Automated tests in CI check the published outputs. This is a maintainer review,
+not an independent one.
+
 ## License
 
 [MIT](LICENSE) — free to use, copy, modify and redistribute.
